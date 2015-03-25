@@ -1,0 +1,13 @@
+#!/bin/sh
+# /usr/local/etc/flowsum2cgi.conf
+
+# Optional, with default values.
+DBHOST=127.0.0.1
+DBNAME=traffic
+DBUSER=flowsum2cgi
+DBTABLE=flowsum
+
+# Required, must be changed to proper value.
+DBPASS=SecretPass2
+
+## EOF ##

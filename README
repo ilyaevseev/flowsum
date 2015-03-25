@@ -1,0 +1,35 @@
+flowsum README
+==============
+
+* Small wrapper for writing summary records from flow-tools archives
+  to MySQL database, with stupid CGI viewer.
+* Written by ilya.evseev@gmail.com at Jan-2012, May-2013.
+* See updates on https://code.google.com/p/flowsum/
+* Distributed as public domain.
+
+How to install?
+==============
+
+* MySQL: create "traffic" database.
+* flowsum.sql: edit passwords and execute
+* flowsum2sql.conf: copy to /usr/local/etc and edit DBPASS=..., LOCAL_NETS=...
+* flowsum2cgi.conf: copy to /usr/local/etc and edit DBPASS=...
+* Call flowsum2sql.wrapper from /etc/crontab every 5 or 15 minutes.
+* Put flowsum.cgi to /var/www/cgi-bin or /usr/local/www/cgi-bin
+
+Required packages
+=================
+
+* MySQL
+* flow-tools-ng
+* lighttpd, apache, mini-httpd, ... (but not nginx, because it not supports cgi-bin!)
+
+Required Perl modules
+=====================
+
+* CPAN:    Net::IP,         Net::Patricia,        Config::General
+* Debian:  libnet-ip-perl,  libnet-patricia-perl, libconfig-general-perl
+* FreeBSD: devel/p5-IP-Net, net/p5-Net-Patricia,  devel/p5-Config-General
+* CentOS:  perl-Net-IP,     perl-Net-Patricia,    perl-Config-General
+
+== END ==

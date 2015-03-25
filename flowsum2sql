@@ -1,0 +1,98 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+die "Usage: $0 <cfgfile> ftfile..." if @ARGV < 2;
+
+use Net::IP;
+use Net::Patricia;
+use Config::General;
+
+#====  Parse config  ===========================================
+
+my $mysql_output = (@ARGV and $ARGV[0] eq '--mysql') ? shift @ARGV : undef;
+
+my $cfgobj = new Config::General(shift @ARGV);
+my %config = $cfgobj->getall;
+
+my $pt = new Net::Patricia;
+$pt->add_string($_,1) foreach split /[,;]\s*/, $config{LOCAL_NETS} || '';
+
+my $tc_unknown = $config{TRAFFIC_CLASS_UNKNOWN}  || 0;
+my $tc_in      = $config{TRAFFIC_CLASS_INCOMING} || 1000;
+my $tc_out     = $config{TRAFFIC_CLASS_OUTGOING} || 2000;
+my $tc_local   = $config{TRAFFIC_CLASS_LOCAL}    || 3000;
+my $dbtable    = $config{DBTABLE} || 'flowsum';
+
+#===============================================================
+
+my %ip2uid;
+my %ip2traffic;   # { ipaddr => { tclass => { sum_bytes=>?, packets=>?, ftime=>?, ltime=>? }, ... }, ... }
+my $flowbytes = 0;
+
+sub ip2uid($) {
+	my $ipstr = shift;
+	my $uid = $ip2uid{$ipstr};
+	return $uid if defined $uid;  # ..already cached
+
+	my $localnet = $pt->match_string($ipstr);
+	return $ip2uid{$ipstr} = 0 if !$localnet;  # ..external IP
+
+	my $ip = new Net::IP($ipstr);
+	return $ip2uid{$ipstr} = $ip->intip();  # ..read from billing
+}
+
+sub update_traffic($$$$$$) {
+	my ($uid, $ipaddr, $tclass, $bytes, $packets, $tstamp) = @_;
+	#print "Uid = $uid, Class = $tclass, Bytes = $nbytes\n";
+	my $ipdata = ($ip2traffic{$ipaddr} ||= {});
+	my $t = ($ipdata->{$tclass} ||= { uid=>$uid });
+	($t->{sum_bytes} ||= 0) += $bytes;
+	($t->{packets}   ||= 0) += $packets;
+	$t->{ftime} = $tstamp unless $t->{ftime} and $t->{ftime} < $tstamp;
+	$t->{ltime} = $tstamp unless $t->{ltime} and $t->{ltime} > $tstamp;
+}
+
+foreach my $ftname (@ARGV) {
+	open F, "flow-export -f2 -mUNIX_SECS,DPKTS,DOCTETS,SRCADDR,DSTADDR < $ftname |"
+		or die "Cannot run flow-export $ftname: $!\n";
+	while(<F>) {
+		next if $. == 1;
+		chomp;
+		my ($tstamp, $packets, $bytes, $srcaddr, $dstaddr) = split(/,/, $_);
+		my $src_uid = ip2uid($srcaddr) || 0;
+		my $dst_uid = ip2uid($dstaddr) || 0;
+		if ($src_uid and $dst_uid) {
+			update_traffic($src_uid, $srcaddr, $tc_local,   $bytes, $packets, $tstamp);
+			update_traffic($dst_uid, $dstaddr, $tc_local,   $bytes, $packets, $tstamp);
+		} elsif ($dst_uid) {
+			update_traffic($dst_uid, $dstaddr, $tc_in,      $bytes, $packets, $tstamp);
+		} elsif ($src_uid) {
+			update_traffic($src_uid, $srcaddr, $tc_out,     $bytes, $packets, $tstamp);
+		} else {
+			update_traffic(0,        '0.0.0.0',$tc_unknown, $bytes, $packets, $tstamp);
+		}
+		$flowbytes += $bytes;
+	}
+	close F;
+
+	my $n = 0;
+	print "insert into $dbtable(uid,ipaddr,tclass,bytes,packets,ftime,ltime) values\n"
+		if $mysql_output;
+
+	while (my ($ipaddr, $ipdata) = each %ip2traffic) {
+		while (my ($tclass, $t) = each %$ipdata) {
+			if ($mysql_output) {
+				print "," if $n++;
+				print "($t->{uid}, inet_aton('$ipaddr'), $tclass,$t->{sum_bytes},$t->{packets},$t->{ftime},$t->{ltime})\n";
+			} else {
+				print "$t->{uid} $ipaddr $tclass $t->{sum_bytes} $t->{packets} $t->{ftime} $t->{ltime}\n";
+			}
+		}
+	}
+	print ";\n" if $mysql_output;
+	%ip2traffic = ();
+}
+
+## EOF ##

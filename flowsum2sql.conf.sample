@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# Used by core
+
+LOCAL_NETS=10.0.0.0/8
+
+TRAFFIC_CLASS_UNKNOWN=0
+TRAFFIC_CLASS_INCOMING=1000
+TRAFFIC_CLASS_OUTGOING=2000
+TRAFFIC_CLASS_LOCAL=3000
+
+# Used by wrapper
+
+# Defaults: DBHOST=localhost, DBNAME=traffic, DBUSER=flowsum2sql, DBTABLE=flowsum
+DBPASS=SecretPass1
+
+DUMPDIR=/tmp
+
+# Convert each flowfile separately..
+#SEPARATE_CALLS=yes
+
+## EOF ##
